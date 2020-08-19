@@ -72,6 +72,222 @@ declare module '@theia/plugin' {
         workspaceContains?: string[];
     }
 
+    // #region auth provider
+
+    export class AuthenticationSession {
+        /**
+         * The identifier of the authentication session.
+         */
+        readonly id: string;
+
+        /**
+         * The access token.
+         */
+        readonly accessToken: string;
+
+        /**
+         * The account associated with the session.
+         */
+        readonly account: {
+            /**
+             * The human-readable name of the account.
+             */
+            readonly displayName: string;
+
+            /**
+             * The unique identifier of the account.
+             */
+            readonly id: string;
+        };
+
+        /**
+         * The permissions granted by the session's access token. Available scopes
+         * are defined by the authentication provider.
+         */
+        readonly scopes: string[];
+
+        constructor(id: string, accessToken: string, account: { displayName: string, id: string }, scopes: string[]);
+    }
+
+    /**
+     * An [event](#Event) which fires when an [AuthenticationProvider](#AuthenticationProvider) is added or removed.
+     */
+    export interface AuthenticationProvidersChangeEvent {
+        /**
+         * The ids of the [authenticationProvider](#AuthenticationProvider)s that have been added.
+         */
+        readonly added: string[];
+
+        /**
+         * The ids of the [authenticationProvider](#AuthenticationProvider)s that have been removed.
+         */
+        readonly removed: string[];
+    }
+
+    /**
+     * Options to be used when getting a session from an [AuthenticationProvider](#AuthenticationProvider).
+     */
+    export interface AuthenticationGetSessionOptions {
+        /**
+         *  Whether login should be performed if there is no matching session. Defaults to false.
+         */
+        createIfNone?: boolean;
+
+        /**
+         * Whether the existing user session preference should be cleared. Set to allow the user to switch accounts.
+         * Defaults to false.
+         */
+        clearSessionPreference?: boolean;
+    }
+
+    /**
+     * An [event](#Event) which fires when an [AuthenticationSession](#AuthenticationSession) is added, removed, or changed.
+     */
+    export interface AuthenticationSessionsChangeEvent {
+        /**
+         * The ids of the [AuthenticationSession](#AuthenticationSession)s that have been added.
+         */
+        readonly added: string[];
+
+        /**
+         * The ids of the [AuthenticationSession](#AuthenticationSession)s that have been removed.
+         */
+        readonly removed: string[];
+
+        /**
+         * The ids of the [AuthenticationSession](#AuthenticationSession)s that have been changed.
+         */
+        readonly changed: string[];
+    }
+
+    /**
+     * **WARNING** When writing an AuthenticationProvider, `id` should be treated as part of your extension's
+     * API, changing it is a breaking change for all extensions relying on the provider. The id is
+     * treated case-sensitively.
+     */
+    export interface AuthenticationProvider {
+        /**
+         * Used as an identifier for extensions trying to work with a particular
+         * provider: 'microsoft', 'github', etc. id must be unique, registering
+         * another provider with the same id will fail.
+         */
+        readonly id: string;
+
+        /**
+         * The human-readable name of the provider.
+         */
+        readonly displayName: string;
+
+        /**
+         * Whether it is possible to be signed into multiple accounts at once with this provider
+         */
+        readonly supportsMultipleAccounts: boolean;
+
+        /**
+         * An [event](#Event) which fires when the array of sessions has changed, or data
+         * within a session has changed.
+         */
+        readonly onDidChangeSessions: Event<AuthenticationSessionsChangeEvent>;
+
+        /**
+         * Returns an array of current sessions.
+         */
+        getSessions(): Thenable<ReadonlyArray<AuthenticationSession>>;
+
+        /**
+         * Prompts a user to login.
+         */
+        login(scopes: string[]): Thenable<AuthenticationSession>;
+
+        /**
+         * Removes the session corresponding to session id.
+         * @param sessionId The session id to log out of
+         */
+        logout(sessionId: string): Thenable<void>;
+    }
+
+    export namespace authentication {
+        /**
+         * Register an authentication provider.
+         *
+         * There can only be one provider per id and an error is being thrown when an id
+         * has already been used by another provider.
+         *
+         * @param provider The authentication provider provider.
+         * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
+         */
+        export function registerAuthenticationProvider(provider: AuthenticationProvider): Disposable;
+
+        /**
+         * Fires with the provider id that was registered or unregistered.
+         */
+        export const onDidChangeAuthenticationProviders: Event<AuthenticationProvidersChangeEvent>;
+
+        /**
+         * The ids of the currently registered authentication providers.
+         * @returns An array of the ids of authentication providers that are currently registered.
+         */
+        export function getProviderIds(): Thenable<ReadonlyArray<string>>;
+
+        /**
+         * @deprecated
+         * An array of the ids of authentication providers that are currently registered.
+         */
+        export const providerIds: string[];
+
+        /**
+         * Returns whether a provider has any sessions matching the requested scopes. This request
+         * is transparent to the user, no UI is shown. Rejects if a provider with providerId is not
+         * registered.
+         * @param providerId The id of the provider
+         * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication
+         * provider
+         * @returns A thenable that resolve to whether the provider has sessions with the requested scopes.
+         */
+        export function hasSessions(providerId: string, scopes: string[]): Thenable<boolean>;
+
+        /**
+         * Get an authentication session matching the desired scopes. Rejects if a provider with providerId is not
+         * registered, or if the user does not consent to sharing authentication information with
+         * the extension. If there are multiple sessions with the same scopes, the user will be shown a
+         * quickpick to select which account they would like to use.
+         * @param providerId The id of the provider to use
+         * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication provider
+         * @param options The [getSessionOptions](#GetSessionOptions) to use
+         * @returns A thenable that resolves to an authentication session
+         */
+        export function getSession(providerId: string, scopes: string[], options: AuthenticationGetSessionOptions & { createIfNone: true }): Thenable<AuthenticationSession>;
+
+        /**
+         * Get an authentication session matching the desired scopes. Rejects if a provider with providerId is not
+         * registered, or if the user does not consent to sharing authentication information with
+         * the extension. If there are multiple sessions with the same scopes, the user will be shown a
+         * quickpick to select which account they would like to use.
+         * @param providerId The id of the provider to use
+         * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication provider
+         * @param options The [getSessionOptions](#GetSessionOptions) to use
+         * @returns A thenable that resolves to an authentication session if available, or undefined if there are no sessions
+         */
+        export function getSession(providerId: string, scopes: string[], options: AuthenticationGetSessionOptions): Thenable<AuthenticationSession | undefined>;
+
+        /**
+         * @deprecated
+         * Logout of a specific session.
+         * @param providerId The id of the provider to use
+         * @param sessionId The session id to remove
+         * provider
+         */
+        export function logout(providerId: string, sessionId: string): Thenable<void>;
+
+        /**
+         * An [event](#Event) which fires when the array of sessions has changed, or data
+         * within a session has changed for a provider. Fires with the ids of the providers
+         * that have had session data change.
+         */
+        export const onDidChangeSessions: Event<{ [providerId: string]: AuthenticationSessionsChangeEvent; }>;
+    }
+
+    //#endregion
 
     /**
      * The contiguous set of modified lines in a diff.
@@ -413,5 +629,178 @@ declare module '@theia/plugin' {
          */
         limitHit?: boolean;
     }
+    //#endregion
+    export interface ResourceLabelFormatter {
+        scheme: string;
+        authority?: string;
+        formatting: ResourceLabelFormatting;
+    }
+
+    export interface ResourceLabelFormatting {
+        label: string; // myLabel:/${path}
+        // TODO@isi
+        // eslint-disable-next-line vscode-dts-literal-or-types
+        separator: '/' | '\\' | '';
+        tildify?: boolean;
+        normalizeDriveLetter?: boolean;
+        workspaceSuffix?: string;
+        authorityPrefix?: string;
+    }
+
+    export namespace workspace {
+        export function registerResourceLabelFormatter(formatter: ResourceLabelFormatter): Disposable;
+    }
+
+    //#region timeline
+    // copied from https://github.com/microsoft/vscode/blob/d69a79b73808559a91206d73d7717ff5f798f23c/src/vs/vscode.proposed.d.ts#L1870-L2017
+    export class TimelineItem {
+        /**
+         * A timestamp (in milliseconds since 1 January 1970 00:00:00) for when the timeline item occurred.
+         */
+        timestamp: number;
+
+        /**
+         * A human-readable string describing the timeline item.
+         */
+        label: string;
+
+        /**
+         * Optional id for the timeline item. It must be unique across all the timeline items provided by this source.
+         *
+         * If not provided, an id is generated using the timeline item's timestamp.
+         */
+        id?: string;
+
+        /**
+         * The icon path or [ThemeIcon](#ThemeIcon) for the timeline item.
+         */
+        iconPath?: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+
+        /**
+         * A human readable string describing less prominent details of the timeline item.
+         */
+        description?: string;
+
+        /**
+         * The tooltip text when you hover over the timeline item.
+         */
+        detail?: string;
+
+        /**
+         * The [command](#Command) that should be executed when the timeline item is selected.
+         */
+        command?: Command;
+
+        /**
+         * Context value of the timeline item. This can be used to contribute specific actions to the item.
+         * For example, a timeline item is given a context value as `commit`. When contributing actions to `timeline/item/context`
+         * using `menus` extension point, you can specify context value for key `timelineItem` in `when` expression like `timelineItem == commit`.
+         * ```
+         *	"contributes": {
+         *		"menus": {
+         *			"timeline/item/context": [
+         *				{
+         *					"command": "extension.copyCommitId",
+         *					"when": "timelineItem == commit"
+         *				}
+         *			]
+         *		}
+         *	}
+         * ```
+         * This will show the `extension.copyCommitId` action only for items where `contextValue` is `commit`.
+         */
+        contextValue?: string;
+
+        /**
+         * @param label A human-readable string describing the timeline item
+         * @param timestamp A timestamp (in milliseconds since 1 January 1970 00:00:00) for when the timeline item occurred
+         */
+        constructor(label: string, timestamp: number);
+    }
+
+    export interface TimelineChangeEvent {
+        /**
+         * The [uri](#Uri) of the resource for which the timeline changed.
+         */
+        uri: Uri;
+
+        /**
+         * A flag which indicates whether the entire timeline should be reset.
+         */
+        reset?: boolean;
+    }
+
+    export interface Timeline {
+        readonly paging?: {
+            /**
+             * A provider-defined cursor specifying the starting point of timeline items which are after the ones returned.
+             * Use `undefined` to signal that there are no more items to be returned.
+             */
+            readonly cursor: string | undefined;
+        }
+
+        /**
+         * An array of [timeline items](#TimelineItem).
+         */
+        readonly items: readonly TimelineItem[];
+    }
+
+    export interface TimelineOptions {
+        /**
+         * A provider-defined cursor specifying the starting point of the timeline items that should be returned.
+         */
+        cursor?: string;
+
+        /**
+         * An optional maximum number timeline items or the all timeline items newer (inclusive) than the timestamp or id that should be returned.
+         * If `undefined` all timeline items should be returned.
+         */
+        limit?: number | { timestamp: number; id?: string };
+    }
+
+    export interface TimelineProvider {
+        /**
+         * An optional event to signal that the timeline for a source has changed.
+         * To signal that the timeline for all resources (uris) has changed, do not pass any argument or pass `undefined`.
+         */
+        onDidChange?: Event<TimelineChangeEvent | undefined>;
+
+        /**
+         * An identifier of the source of the timeline items. This can be used to filter sources.
+         */
+        readonly id: string;
+
+        /**
+         * A human-readable string describing the source of the timeline items. This can be used as the display label when filtering sources.
+         */
+        readonly label: string;
+
+        /**
+         * Provide [timeline items](#TimelineItem) for a [Uri](#Uri).
+         *
+         * @param uri The [uri](#Uri) of the file to provide the timeline for.
+         * @param options A set of options to determine how results should be returned.
+         * @param token A cancellation token.
+         * @return The [timeline result](#TimelineResult) or a thenable that resolves to such. The lack of a result
+         * can be signaled by returning `undefined`, `null`, or an empty array.
+         */
+        provideTimeline(uri: Uri, options: TimelineOptions, token: CancellationToken): ProviderResult<Timeline>;
+    }
+
+    export namespace workspace {
+        /**
+         * Register a timeline provider.
+         *
+         * Multiple providers can be registered. In that case, providers are asked in
+         * parallel and the results are merged. A failing provider (rejected promise or exception) will
+         * not cause a failure of the whole operation.
+         *
+         * @param scheme A scheme or schemes that defines which documents this provider is applicable to. Can be `*` to target all documents.
+         * @param provider A timeline provider.
+         * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
+         */
+        export function registerTimelineProvider(scheme: string | string[], provider: TimelineProvider): Disposable;
+    }
+
     //#endregion
 }

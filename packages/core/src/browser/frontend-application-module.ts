@@ -92,6 +92,7 @@ import { TreeLabelProvider } from './tree/tree-label-provider';
 import { ProgressBar } from './progress-bar';
 import { ProgressBarFactory, ProgressBarOptions } from './progress-bar-factory';
 import { CommandOpenHandler } from './command-open-handler';
+import { AuthenticationService, AuthenticationServiceImpl } from '../browser/authentication-service';
 
 export { bindResourceProvider, bindMessageService, bindPreferenceService };
 
@@ -326,4 +327,6 @@ export const frontendApplicationModule = new ContainerModule((bind, unbind, isBo
     });
 
     bind(ContextMenuContext).toSelf().inSingletonScope();
+
+    bind(AuthenticationService).to(AuthenticationServiceImpl).inSingletonScope();
 });

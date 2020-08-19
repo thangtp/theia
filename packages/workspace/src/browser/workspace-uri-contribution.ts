@@ -27,7 +27,7 @@ export class WorkspaceUriLabelProviderContribution extends DefaultUriLabelProvid
     protected readonly workspaceVariable: WorkspaceVariableContribution;
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    async init(): Promise<void> {
         // no-op, backward compatibility
     }
 

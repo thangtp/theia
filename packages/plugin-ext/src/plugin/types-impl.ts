@@ -546,6 +546,39 @@ export class ThemeIcon {
 
 }
 
+export class AuthenticationSession {
+    /**
+     * The identifier of the authentication session.
+     */
+    readonly id: string;
+
+    /**
+     * The access token.
+     */
+    readonly accessToken: string;
+
+    /**
+     * The account associated with the session.
+     */
+    readonly account: {
+        /**
+         * The human-readable name of the account.
+         */
+        readonly displayName: string;
+
+        /**
+         * The unique identifier of the account.
+         */
+        readonly id: string;
+    };
+
+    /**
+     * The permissions granted by the session's access token. Available scopes
+     * are defined by the authentication provider.
+     */
+    readonly scopes: string[];
+}
+
 export enum TextEditorRevealType {
     Default = 0,
     InCenter = 1,
@@ -2125,5 +2158,20 @@ export class CallHierarchyOutgoingCall {
     constructor(item: theia.CallHierarchyItem, fromRanges: theia.Range[]) {
         this.fromRanges = fromRanges;
         this.to = item;
+    }
+}
+
+export class TimelineItem {
+    timestamp: number;
+    label: string;
+    id?: string;
+    iconPath?: theia.Uri | { light: theia.Uri; dark: theia.Uri } | ThemeIcon;
+    description?: string;
+    detail?: string;
+    command?: theia.Command;
+    contextValue?: string;
+    constructor(label: string, timestamp: number) {
+        this.label = label;
+        this.timestamp = timestamp;
     }
 }

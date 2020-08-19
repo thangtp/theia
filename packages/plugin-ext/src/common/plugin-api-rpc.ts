@@ -73,13 +73,21 @@ import {
 } from './plugin-api-rpc-model';
 import { ExtPluginApi } from './plugin-ext-api-contribution';
 import { KeysToAnyValues, KeysToKeysToAnyValue } from './types';
-import { CancellationToken, Progress, ProgressOptions } from '@theia/plugin';
+import { AuthenticationSession, CancellationToken, Progress, ProgressOptions } from '@theia/plugin';
 import { DebuggerDescription } from '@theia/debug/lib/common/debug-service';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { SymbolInformation } from 'vscode-languageserver-types';
 import { ArgumentProcessor } from '../plugin/command-registry';
 import { MaybePromise } from '@theia/core/lib/common/types';
 import { QuickTitleButton } from '@theia/core/lib/common/quick-open-model';
+import { ResourceLabelFormatter } from '@theia/core/lib/common/label-protocol';
+import {
+    InternalTimelineOptions,
+    Timeline,
+    TimelineChangeEvent,
+    TimelineProviderDescriptor
+} from '@theia/timeline/lib/common/timeline-model';
+import { AuthenticationSessionsChangeEvent } from '@theia/core/lib/browser/authentication-service';
 
 export interface PreferenceData {
     [scope: number]: any;
@@ -551,6 +559,16 @@ export interface WorkspaceExt {
     $onTextSearchResult(searchRequestId: number, done: boolean, result?: SearchInWorkspaceResult): void;
 }
 
+export interface TimelineExt {
+    $getTimeline(source: string, uri: UriComponents, options: theia.TimelineOptions, internalOptions?: InternalTimelineOptions): Promise<Timeline | undefined>;
+}
+
+export interface TimelineMain {
+    $registerTimelineProvider(provider: TimelineProviderDescriptor): Promise<void>;
+    $fireTimelineChanged(e: TimelineChangeEvent): Promise<void>;
+    $unregisterTimelineProvider(source: string): Promise<void>;
+}
+
 export interface DialogsMain {
     $showOpenDialog(options: OpenDialogOptionsMain): Promise<string[] | undefined>;
     $showSaveDialog(options: SaveDialogOptionsMain): Promise<string | undefined>;
@@ -667,6 +685,17 @@ export interface ScmExt {
     $executeResourceCommand(sourceControlHandle: number, groupHandle: number, resourceHandle: number): Promise<void>;
     $provideOriginalResource(sourceControlHandle: number, uri: string, token: CancellationToken): Promise<UriComponents | undefined>;
     $setSourceControlSelection(sourceControlHandle: number, selected: boolean): Promise<void>;
+}
+
+export namespace TimelineCommandArg {
+    export function is(arg: Object | undefined): arg is TimelineCommandArg {
+        return !!arg && typeof arg === 'object' && 'timelineHandle' in arg;
+    }
+}
+export interface TimelineCommandArg {
+    timelineHandle: string;
+    source: string;
+    uri: string;
 }
 
 export interface DecorationsExt {
@@ -1414,6 +1443,7 @@ export interface ClipboardMain {
 }
 
 export const PLUGIN_RPC_CONTEXT = {
+    AUTHENTICATION_MAIN: <ProxyIdentifier<AuthenticationMain>>createProxyIdentifier<AuthenticationMain>('AuthenticationMain'),
     COMMAND_REGISTRY_MAIN: <ProxyIdentifier<CommandRegistryMain>>createProxyIdentifier<CommandRegistryMain>('CommandRegistryMain'),
     QUICK_OPEN_MAIN: createProxyIdentifier<QuickOpenMain>('QuickOpenMain'),
     DIALOGS_MAIN: createProxyIdentifier<DialogsMain>('DialogsMain'),
@@ -1439,10 +1469,13 @@ export const PLUGIN_RPC_CONTEXT = {
     SCM_MAIN: createProxyIdentifier<ScmMain>('ScmMain'),
     DECORATIONS_MAIN: createProxyIdentifier<DecorationsMain>('DecorationsMain'),
     WINDOW_MAIN: createProxyIdentifier<WindowMain>('WindowMain'),
-    CLIPBOARD_MAIN: <ProxyIdentifier<ClipboardMain>>createProxyIdentifier<ClipboardMain>('ClipboardMain')
+    CLIPBOARD_MAIN: <ProxyIdentifier<ClipboardMain>>createProxyIdentifier<ClipboardMain>('ClipboardMain'),
+    LABEL_SERVICE_MAIN: <ProxyIdentifier<LabelServiceMain>>createProxyIdentifier<LabelServiceMain>('LabelServiceMain'),
+    TIMELINE_MAIN: <ProxyIdentifier<TimelineMain>>createProxyIdentifier<TimelineMain>('TimelineMain')
 };
 
 export const MAIN_RPC_CONTEXT = {
+    AUTHENTICATION_EXT: createProxyIdentifier<AuthenticationExt>('AuthenticationExt'),
     HOSTED_PLUGIN_MANAGER_EXT: createProxyIdentifier<PluginManagerExt>('PluginManagerExt'),
     COMMAND_REGISTRY_EXT: createProxyIdentifier<CommandRegistryExt>('CommandRegistryExt'),
     QUICK_OPEN_EXT: createProxyIdentifier<QuickOpenExt>('QuickOpenExt'),
@@ -1465,7 +1498,9 @@ export const MAIN_RPC_CONTEXT = {
     DEBUG_EXT: createProxyIdentifier<DebugExt>('DebugExt'),
     FILE_SYSTEM_EXT: createProxyIdentifier<FileSystemExt>('FileSystemExt'),
     SCM_EXT: createProxyIdentifier<ScmExt>('ScmExt'),
-    DECORATIONS_EXT: createProxyIdentifier<DecorationsExt>('DecorationsExt')
+    DECORATIONS_EXT: createProxyIdentifier<DecorationsExt>('DecorationsExt'),
+    LABEL_SERVICE_EXT: createProxyIdentifier<LabelServiceExt>('LabelServiceExt'),
+    TIMELINE_EXT: createProxyIdentifier<TimelineExt>('TimeLineExt')
 };
 
 export interface TasksExt {
@@ -1486,7 +1521,42 @@ export interface TasksMain {
     $terminateTask(id: number): void;
 }
 
+export interface AuthenticationExt {
+    $getSessions(id: string): Promise<ReadonlyArray<theia.AuthenticationSession>>;
+    $getSessionAccessToken(id: string, sessionId: string): Promise<string>;
+    $login(id: string, scopes: string[]): Promise<theia.AuthenticationSession>;
+    $logout(id: string, sessionId: string): Promise<void>;
+    $onDidChangeAuthenticationSessions(providerId: string, event: theia.AuthenticationSessionsChangeEvent): Promise<void>;
+    $onDidChangeAuthenticationProviders(added: string[], removed: string[]): Promise<void>;
+}
+
+export interface AuthenticationMain {
+    $registerAuthenticationProvider(id: string, displayName: string, supportsMultipleAccounts: boolean): void;
+    $unregisterAuthenticationProvider(id: string): void;
+    $getProviderIds(): Promise<string[]>;
+    $sendDidChangeSessions(providerId: string, event: AuthenticationSessionsChangeEvent): void;
+    $getSession(providerId: string, scopes: string[], extensionId: string, extensionName: string,
+                options: { createIfNone?: boolean, clearSessionPreference?: boolean }): Promise<AuthenticationSession | undefined>;
+    $selectSession(providerId: string, providerName: string, extensionId: string, extensionName: string,
+                   potentialSessions: AuthenticationSession[], scopes: string[], clearSessionPreference: boolean): Promise<AuthenticationSession>;
+    $getSessionsPrompt(providerId: string, accountName: string, providerName: string, extensionId: string, extensionName: string): Promise<boolean>;
+    $loginPrompt(providerName: string, extensionName: string): Promise<boolean>;
+    $setTrustedExtension(providerId: string, accountName: string, extensionId: string, extensionName: string): Promise<void>;
+
+    $getSessions(providerId: string): Promise<ReadonlyArray<theia.AuthenticationSession>>;
+    $logout(providerId: string, sessionId: string): Promise<void>;
+}
+
 export interface RawColorInfo {
     color: [number, number, number, number];
     range: Range;
+}
+
+export interface LabelServiceExt {
+    $registerResourceLabelFormatter(formatter: ResourceLabelFormatter): theia.Disposable;
+}
+
+export interface LabelServiceMain {
+    $registerResourceLabelFormatter(handle: number, formatter: ResourceLabelFormatter): void;
+    $unregisterResourceLabelFormatter(handle: number): void;
 }
